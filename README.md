@@ -5,52 +5,90 @@
 
 > 접수 마감: **2026. 6. 19.(금) 18:00**, 산림청 누리집 온라인 접수
 
-## 폴더 구성
+데모 목업이 아니라 **실제 백엔드(FastAPI) + 클라이언트(PWA·관제 웹)** 로 동작하는 상용 수준 구현이다.
+앱·관제는 `/api/v1`의 클라이언트이며, 백엔드가 없으면 자동으로 로컬 엔진으로 폴백한다(통신 음영지역 대비).
+
+## 아키텍처
 
 ```
 forest-mate/
-├── app/                  # 동작하는 프로토타입
-│   ├── index.html        #   모바일 앱 (홈·산행·AI동무·SOS·마이 5개 화면, PWA)
-│   ├── dashboard.html    #   B2G 관제 웹 대시보드
-│   ├── manifest.json     #   PWA 매니페스트 (홈화면 설치)
-│   └── sw.js             #   오프라인 서비스워커
-├── assets/               # 앱 스크린샷 + 제안서/PPT용 차트·다이어그램 PNG
-├── deliverables/
-│   ├── 숲길동무_기획서_제품서비스개발부문.docx   # 제안서 (HWP 양식 항목 그대로)
-│   └── 숲길동무_발표자료.pptx                    # 2차 발표평가용 15장
-├── make_charts.py        # 차트·다이어그램 생성 스크립트 (matplotlib)
-├── make_docx.js          # 제안서 생성 스크립트 (docx-js)
-└── make_pptx.js          # 발표자료 생성 스크립트 (pptxgenjs)
+├── server/               # FastAPI 백엔드
+│   ├── main.py           #   앱 조립 + 정적 프런트(app/) 동일 오리진 서빙
+│   ├── config.py         #   설정(.env) — 키 없으면 스냅샷/규칙 폴백
+│   ├── db.py, models.py  #   SQLAlchemy (dev SQLite / prod PostgreSQL+PostGIS)
+│   ├── adapters/         #   공공데이터 어댑터 (기상청·산불·산악기상 + TTL 캐시 + 폴백)
+│   ├── services/         #   scoring(산행지수·추천·위험융합) · safety(조난감지·k익명화)
+│   │                     #   chat(의도엔진) · llm(Claude RAG) · bus(관제 WS pub/sub)
+│   ├── routers/          #   public · hikes(토큰인증) · dashboard(WS)
+│   └── tests/            #   pytest 20개 (스코어링·안전·API E2E·WebSocket)
+├── app/                  # 클라이언트 (정적 호스팅 가능, 백엔드와 동일 오리진 권장)
+│   ├── home.html         #   서비스 소개 랜딩
+│   ├── index.html        #   모바일 PWA — cloud 모드 시 LIVE 배지
+│   ├── dashboard.html    #   B2G 관제 — 실시간 KPI + WebSocket 피드
+│   ├── app.js            #   API 클라이언트(헬스체크 감지·실패 시 로컬 폴백) + 앱 로직
+│   └── data.js, sw.js    #   로컬 폴백 데이터 / 오프라인 서비스워커
+├── deploy → Dockerfile · docker-compose.yml · render.yaml(무료 호스팅) · .env.example
+├── packaging/            # 스토어 빌드 — android(TWA·Bubblewrap) · ios(Capacitor)
+├── deliverables/         # 기획서 DOCX · 발표 PPTX
+├── legal/                # 개인정보처리방침 · 이용약관
+└── store/                # 스토어 등록 메타데이터 + 스토어_제출_런북.md
 ```
 
-## 프로토타입 실행
+## 실행
 
+### 풀스택(백엔드 + 프런트, 권장)
 ```bash
-cd forest-mate/app && python3 -m http.server 5181
-# 모바일 앱:   http://localhost:5181/index.html   (브라우저 폭을 좁히거나 모바일로 접속)
-# 관제 대시보드: http://localhost:5181/dashboard.html
+cd forest-mate
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+.venv/bin/uvicorn server.main:app --port 5181
 ```
+- 랜딩 http://localhost:5181/home.html · 앱 http://localhost:5181/index.html · 관제 http://localhost:5181/dashboard.html
+- API 문서(OpenAPI) http://localhost:5181/docs
 
-- 탭 직접 열기: `index.html?t=trail` (home / trail / ai / sos / my)
-- SOS 버튼 1.5초 길게 누르면 신고 시연 알림이 뜹니다.
-
-## 스토어 등록(접수 전 필수)
-
-기획서 ‘등록 정보’ 칸에는 실제 URL이 필요합니다. 빠른 경로:
-
-1. **웹**: `app/` 폴더를 Vercel/Netlify/GitHub Pages에 그대로 업로드 → 웹 URL 확보 (PWA라 설치도 동작).
-2. **구글**: [PWABuilder](https://pwabuilder.com) 또는 Bubblewrap으로 TWA 패키징 → Play Console 비공개 테스트 트랙 URL.
-3. **애플**: Capacitor로 래핑(`npx cap add ios`) → TestFlight 공개 링크.
-4. DOCX의 노란색 표시 칸(팀명·URL·팀 실적)을 교체하고, 본문을 공고 HWP 양식에 옮겨 제출.
-
-## 산출물 재생성
-
+### Docker
 ```bash
-python3 make_charts.py                      # 차트 PNG
-NODE_PATH=$(npm root -g) node make_docx.js  # 제안서 DOCX
-NODE_PATH=$(npm root -g) node make_pptx.js  # 발표 PPTX
+cp .env.example .env          # 키 입력(없어도 폴백 동작)
+docker compose up             # API + PostgreSQL(PostGIS)
 ```
 
-## 데이터 출처 (기획서 2장에 URL 명기)
+### 정적만(백엔드 없이)
+`app/`를 정적 호스팅하면 로컬 엔진으로 단독 동작(LIVE 배지 없음, 관제는 시뮬레이션).
 
+## 동작 모드 (키 유무로 자동 전환 — 코드 수정 불필요)
+
+| 기능 | 키 없음(기본) | 키 설정 시 |
+|------|--------------|-----------|
+| 산행지수·기상·산불 | 공공데이터 **스냅샷**(실 API와 동일 스키마) | `DATA_GO_KR_KEY` → **실 공공데이터 API** |
+| AI 숲이 챗 | **규칙 기반 의도 엔진** | `ANTHROPIC_API_KEY` → **Claude RAG**(공공데이터 근거 주입) |
+| 프런트 | 로컬 폴백 엔진 | 백엔드 감지 시 **cloud 모드**(서버 경유) |
+
+LLM 모드는 `server/services/llm.py`에서 Claude Messages API를 호출한다 — 고정 시스템 프롬프트(지식베이스)에 prompt caching, 요청별 실시간 컨텍스트(기상·코스·위험)는 user 메시지로 주입. 모델 `claude-opus-4-8`.
+
+## 핵심 도메인 로직(서버가 단일 출처)
+
+- **산행지수** `services/scoring.py` — 산불0.3+산사태0.25+기상0.25+일몰0.2
+- **코스 추천** — 체력·무릎·심혈관·혼잡·기상 가중(설명가능 규칙)
+- **위험 융합** — 정적 위험(산사태등급·사고이력) × 실시간 기상. 운영은 XGBoost 서빙으로 교체(규칙은 폴백)
+- **조난 감지** `services/safety.py` — 이동 정지 30분+ → level1, 심박 이상 동반 → level2(즉시 전파). **서버측 판정**이라 앱 종료·통신 두절 시에도 마지막 데이터로 평가
+- **k-익명화** — 관제는 개인 위치 대신 군집(50인↑) 통계만 표출(위치정보법)
+
+## 테스트
+```bash
+.venv/bin/python -m pytest server/tests -q     # 20 passed
+```
+스코어링·조난감지·k익명화 단위 테스트 + 기기등록→산행→위험경고→SOS→관제반영 E2E + WebSocket 수신 검증.
+CI(`.github/workflows/forestmate-ci.yml`)가 push마다 pytest + Docker 빌드/헬스체크 smoke를 수행한다.
+
+## 상용 전환 체크리스트
+1. `DATABASE_URL`을 PostgreSQL(+PostGIS)로, 등산로 ETL로 전국 코스 적재
+2. `DATA_GO_KR_KEY`·`ANTHROPIC_API_KEY` 발급·설정 → 실 데이터/LLM 활성
+3. `K_ANONYMITY=50`, HTTPS, CORS 화이트리스트
+4. 수평 확장 시 `services/bus.py`를 Redis Pub/Sub로, SOS를 119 신고 API·FCM 워커로 팬아웃
+5. **스토어 출시**: `render.yaml`로 무료 배포(공개 HTTPS) → `packaging/`의 TWA(Play)·Capacitor(App Store)로 빌드·등록. **전체 절차는 [store/스토어_제출_런북.md](store/스토어_제출_런북.md)** 참고
+6. DOCX 노란 칸(팀명·URL·실적) 교체 후 공고 HWP 양식 제출
+
+## 시연·캡처용 파라미터
+`index.html?t=trail&demo=57` · `dashboard.html?demo=1`(시계 14:07) · `index.html?embed=1`(랜딩 iframe용)
+
+## 데이터 출처
 산림청 등산로 공간정보 · 국립산림과학원 산불위험예보/산악기상관측망 · 산사태정보시스템 · 국립수목원 국가생물종지식정보 · 한국산림복지진흥원 숲나들e · 산림빅데이터 거래소 · 소방청 산악사고 현황 · 행정안전부 국가지점번호 · 기상청 단기예보

@@ -60,20 +60,25 @@ tr:last-child td{border:none}
 .barrow .bb span{font-size:9px;color:var(--sub);font-weight:700}
 .foot{grid-column:1/-1;color:#5d7466;font-size:11px;padding:4px 4px 14px;line-height:1.6}
 .right-col{display:flex;flex-direction:column;gap:18px}
+.ev{transition:border-color .2s, transform .2s; cursor:default}
+.ev:hover{border-color:#3E6B50}
+.ev.new{animation:slidein .5s cubic-bezier(.2,.9,.3,1)}
+@keyframes slidein{from{opacity:0; transform:translateY(-8px)}to{opacity:1; transform:none}}
 </style>
 </head>
 <body>
 <header>
   <div class="logo"><div class="mark">🌲</div>숲길동무 관제센터<small>FOR GOV · B2G</small></div>
   <div class="scope">관할: <b>북한산 국립공원 일대 (서울·경기)</b> · 연동: 종로/은평/고양 119</div>
-  <div class="clock">2026-06-12 (금) 14:07</div>
+  <div class="clock" id="clock">2026-06-12 (금) 14:07</div>
+  <span id="liveBadge" style="display:none;align-items:center;gap:5px;margin-left:12px;font-size:11px;font-weight:800;letter-spacing:.5px;color:#34D399;background:rgba(52,211,153,.14);border:1px solid rgba(52,211,153,.35);border-radius:7px;padding:4px 8px">● 실시간 연동</span>
 </header>
 
 <main>
   <div class="kpis">
-    <div class="kpi"><div class="lab">⛰ 현재 산행 인원</div><div class="val">3,482<small>명</small></div><div class="delta up">▲ 12% 전주 동시간</div></div>
-    <div class="kpi"><div class="lab">📡 금일 위험 알림 발송</div><div class="val">1,294<small>건</small></div><div class="delta">낙석 412 · 일몰 503 · 기상 379</div></div>
-    <div class="kpi alert"><div class="lab">🚨 진행 중 SOS</div><div class="val">1<small>건</small></div><div class="delta">구조대 출동 — ETA 9분</div></div>
+    <div class="kpi"><div class="lab">⛰ 현재 산행 인원</div><div class="val"><span id="kpiHikers">3,482</span><small>명</small></div><div class="delta up">▲ 12% 전주 동시간</div></div>
+    <div class="kpi"><div class="lab">📡 금일 위험 알림 발송</div><div class="val"><span id="kpiAlerts">1,294</span><small>건</small></div><div class="delta">낙석 412 · 일몰 503 · 기상 379</div></div>
+    <div class="kpi alert"><div class="lab">🚨 진행 중 SOS</div><div class="val"><span id="kpiSos">1</span><small>건</small></div><div class="delta">구조대 출동 — ETA 9분</div></div>
     <div class="kpi"><div class="lab">🤖 AI 조난위험 감지</div><div class="val">7<small>명</small></div><div class="delta dn">사전 연락 5 · 모니터링 2</div></div>
     <div class="kpi"><div class="lab">⏱ 평균 구조 도달시간</div><div class="val">23<small>분</small></div><div class="delta up">▼ 31% (도입 전 33분)</div></div>
   </div>
@@ -102,6 +107,7 @@ tr:last-child td{border:none}
         <circle cx="455" cy="140" r="65" fill="url(#hot2)"/>
         <circle cx="520" cy="215" r="48" fill="url(#hot3)"/>
         <circle cx="170" cy="320" r="70" fill="url(#hot1)"/>
+        <g id="liveDots"></g>
         <g font-size="11" font-weight="800" fill="#CFE7D6">
           <text x="455" y="120" text-anchor="middle">▲ 백운대</text>
           <text x="170" y="305" text-anchor="middle">▲ 족두리봉</text>
@@ -139,7 +145,7 @@ tr:last-child td{border:none}
   <div class="right-col">
     <section class="panel">
       <div class="ph"><b>실시간 안전 이벤트</b><span class="tag">자동 갱신 10s</span></div>
-      <div class="feed">
+      <div class="feed" id="feed">
         <div class="ev sos"><div class="ic">🚨</div><div><b>SOS 접수 — 60대 남성, 인수봉 동면</b><span>국가지점번호 다사 5702 2788 · 심박 132 · 종로 산악구조대 인계</span></div><time>14:02</time></div>
         <div class="ev warn"><div class="ic">🤖</div><div><b>AI 조난위험 — 40분 정지 감지</b><span>백운산장 북측 0.4km · 앱 푸시/전화 응답 대기</span></div><time>13:51</time></div>
         <div class="ev warn"><div class="ic">⚠️</div><div><b>낙석 위험구간 진입 급증</b><span>Y계곡 우회 안내 발송 214명 · 수락률 91%</span></div><time>13:38</time></div>
@@ -163,5 +169,129 @@ tr:last-child td{border:none}
 
   <div class="foot">데이터: 산림청 등산로 공간정보 · 국립산림과학원 산불위험예보/산악기상관측망 · 산사태정보시스템 위험지도 · 소방청 전국 산악사고 현황 · 행정안전부 국가지점번호 · 기상청 단기예보 OpenAPI — 개인 위치정보는 k-익명화(≥50) 후 표출, 원본은 단말·보호자 동의 범위 내에서만 처리 (위치정보법 준수)</div>
 </main>
+
+<script>
+/* 라이브 시뮬레이션 — 관제 데모 */
+(function () {
+  // 1) 시계 (?demo=1 — 캡처·시연용 고정 시각)
+  const clock = document.getElementById("clock");
+  const days = ["일", "월", "화", "수", "목", "금", "토"];
+  const DEMO_CLOCK = new URLSearchParams(location.search).get("demo");
+  function tickClock() {
+    if (DEMO_CLOCK) { clock.textContent = "2026-06-13 (토) 14:07"; return; }
+    const d = new Date();
+    clock.textContent = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} (${days[d.getDay()]}) ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`;
+  }
+  tickClock(); setInterval(tickClock, 1000);
+
+  // 2) KPI 미세 변동 (시뮬레이션 — 클라우드 연결 시 cloudBridge가 중단하고 실 KPI로 대체)
+  let hikers = 3482, alerts = 1294;
+  const kpiTimer = setInterval(() => {
+    hikers = Math.max(3000, hikers + Math.round((Math.random() - 0.45) * 26));
+    if (Math.random() < 0.4) alerts += Math.round(Math.random() * 3);
+    document.getElementById("kpiHikers").textContent = hikers.toLocaleString();
+    document.getElementById("kpiAlerts").textContent = alerts.toLocaleString();
+  }, 4000);
+
+  // 3) 산행자 점 — 등산로를 따라 흐르는 익명 위치
+  const trails = [
+    // [x1,y1,cx1,cy1,cx2,cy2,x2,y2] 베지어 — svg의 점선 등산로와 동일 경로
+    [80, 415, 170, 392, 300, 330, 455, 135],
+    [700, 400, 640, 330, 530, 230, 455, 135],
+    [40, 250, 140, 260, 260, 290, 340, 300],
+  ];
+  function bez(p, t) {
+    const [x1, y1, cx1, cy1, cx2, cy2, x2, y2] = p, u = 1 - t;
+    return [
+      u * u * u * x1 + 3 * u * u * t * cx1 + 3 * u * t * t * cx2 + t * t * t * x2,
+      u * u * u * y1 + 3 * u * u * t * cy1 + 3 * u * t * t * cy2 + t * t * t * y2,
+    ];
+  }
+  const g = document.getElementById("liveDots");
+  const dots = [];
+  for (let i = 0; i < 16; i++) {
+    const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    c.setAttribute("r", 2.6);
+    c.setAttribute("fill", "#9FD9BB");
+    c.setAttribute("opacity", ".85");
+    g.appendChild(c);
+    dots.push({ el: c, trail: trails[i % trails.length], t: Math.random(), v: 0.0008 + Math.random() * 0.0014, dir: Math.random() < 0.8 ? 1 : -1 });
+  }
+  function moveDots() {
+    dots.forEach((d) => {
+      d.t += d.v * d.dir;
+      if (d.t > 1) { d.t = 1; d.dir = -1; }
+      if (d.t < 0) { d.t = 0; d.dir = 1; }
+      const [x, y] = bez(d.trail, d.t);
+      d.el.setAttribute("cx", x + Math.sin(d.t * 40) * 3);
+      d.el.setAttribute("cy", y + Math.cos(d.t * 31) * 3);
+    });
+    requestAnimationFrame(moveDots);
+  }
+  moveDots();
+
+  // 4) 실시간 이벤트 피드
+  const feed = document.getElementById("feed");
+  const pool = [
+    ["warn", "🤖", "AI 조난위험 — 이동 정지 감지", "사용자 응답 대기 · 단계 격상 임계 12분"],
+    ["ok", "✅", "조난 의심 해제", "휴식 확인(사용자 응답) — 모니터링 종료"],
+    ["warn", "⚠️", "위험구간 진입 경고 발송", "Y계곡 우회 안내 · 수락률 91%"],
+    ["ok", "📢", "일몰 안내 일괄 발송", "하산 권고 푸시 — 대상 1,800여 명"],
+    ["ok", "🛰", "산악기상 갱신", "백운대 풍속 9→7m/s — 위험도 재계산"],
+    ["warn", "🧭", "코스 이탈 감지", "사용자 앱 경고 후 복귀 확인"],
+  ];
+  function hm() { const d = new Date(); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; }
+  function pushEvent(cls, ico, b, s) {
+    const div = document.createElement("div");
+    div.className = `ev ${cls} new`;
+    div.innerHTML = `<div class="ic">${ico}</div><div><b>${b}</b><span>${s}</span></div><time>${hm()}</time>`;
+    feed.prepend(div);
+    while (feed.children.length > 6) feed.lastElementChild.remove();
+  }
+  const simTimer = setInterval(() => {
+    const [cls, ico, b, s] = pool[Math.floor(Math.random() * pool.length)];
+    pushEvent(cls, ico, b, s);
+  }, 7000);
+
+  /* ---- 클라우드 브리지: 백엔드가 살아 있으면 실 KPI·WS 이벤트로 전환 ---- */
+  const ICON = { sos: ["warn", "🚨"], distress: ["warn", "🤖"], hazard: ["warn", "⚠️"],
+                 checkin: ["ok", "🥾"], clear: ["ok", "✅"] };
+  (async function cloudBridge() {
+    if (location.protocol === "file:") return;
+    let summary;
+    try {
+      const r = await fetch("/api/v1/dashboard/summary", { signal: AbortSignal.timeout(2000) });
+      if (!r.ok) throw new Error();
+      summary = await r.json();
+    } catch { return; } // 정적 호스팅(백엔드 없음) → 시뮬레이션 유지
+
+    clearInterval(simTimer); clearInterval(kpiTimer); // 실데이터 모드: 시뮬레이션 중단
+    const badge = document.getElementById("liveBadge");
+    if (badge) badge.style.display = "inline-flex";
+    document.getElementById("kpiHikers").textContent = summary.kpi.active_hikers.toLocaleString();
+    document.getElementById("kpiAlerts").textContent = summary.kpi.alerts_today.toLocaleString();
+    document.getElementById("kpiSos").textContent = summary.kpi.open_sos.toLocaleString();
+    feed.innerHTML = "";
+    summary.events.forEach((e) => {
+      const [cls, ico] = ICON[e.kind] || ["ok", "📍"];
+      pushEvent(cls, ico, e.title, e.body || "");
+    });
+
+    const proto = location.protocol === "https:" ? "wss" : "ws";
+    const ws = new WebSocket(`${proto}://${location.host}/api/v1/ws/dashboard`);
+    const bump = (id, d) => { const el = document.getElementById(id);
+      el.textContent = ((parseInt(el.textContent.replace(/,/g, ""), 10) || 0) + d).toLocaleString(); };
+    ws.onmessage = (ev) => {
+      const m = JSON.parse(ev.data);
+      if (m.type === "ping") return;
+      const [cls, ico] = ICON[m.type] || ["ok", "📍"];
+      pushEvent(cls, ico, m.title || m.type, m.station || m.note || "");
+      if (m.type === "sos") bump("kpiSos", 1);
+      if (m.type === "hazard") bump("kpiAlerts", 1);
+      if (m.type === "checkin") bump("kpiHikers", 1);
+    };
+  })();
+})();
+</script>
 </body>
 </html>
